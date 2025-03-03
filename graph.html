@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Graph</title>
+    <script src="https://unpkg.com/cytoscape@3.21.0/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+    <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+    <script src="https://unpkg.com/cytoscape-fcose@2.1.0/cytoscape-fcose.js"></script>
+    <style>
+        #cy {
+            width: 100%;
+            height: 80vh;
+            border: 1px solid #ccc;
+        }
+        .form-container {
+            margin: 20px;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+        }
+        #context-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            display: none;
+        }
+        #context-menu ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        #context-menu ul li {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: none;
+}
+#context-menu ul li:hover {
+    background: #f0f0f0;
+}
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <input type="text" id="actorName" placeholder="Actor Name:">
+        <input type="number" id="depth" placeholder="Depth:">
+        <button onclick="loadGraph()">Display</button>
+    </div>
+    <div id="context-menu">
+        <ul>
+            <li id="show-movies">Show Movies</li>
+            <li id="show-actors">Show Actors</li>
+        </ul>
+    </div>
+    <div id="cy"></div>
+
+    <script>
+        cytoscape.use(fcose);
+
+        async function loadGraph() {
+            const actorName = document.getElementById('actorName').value;
+            let depth = document.getElementById('depth').value;
+            depth = depth*2;
+
+            if (!actorName || !depth) {
+                alert("Fill all the inputs!");
+                return;
+            }
+            try {
+                const response = await fetch(`http://localhost:3000/api/getActorNeighborhood?name=${actorName}&depth=${depth}`);
+                const graphData = await response.json();
+                let selectedNode = null;
+                let layoutInfo = {
+                    name: 'fcose',
+                    animate: true,
+                    randomize: false,
+                    fit: true,
+                    padding: 30,
+                    nodeSeparation: 200,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 0.2,
+                    nodeRepulsion: 50000,
+                    gravity: 0.5,
+                    numIter: 5000};
+                let randomizedLayout = { ...layoutInfo, randomize: true };
+
+                let cy = cytoscape({
+                    container: document.getElementById('cy'),
+                    elements: [...graphData.nodes, ...graphData.edges],
+                    style: [
+                    {
+                            selector: 'node[type = "Person"]',
+                            style: {
+                                'background-image': 'url("assets/actor.png")',
+                                'background-fit': 'cover',
+                                'background-opacity': 1,
+                                'background-color': 'rgba(173, 216, 230, 0.5)',
+                                'width': 40,
+                                'height': 40,
+                                'label': 'data(label)',
+                                'font-size': '10px',
+                                'text-valign': 'bottom',
+                                'text-margin-y': 5
+                            }
+                        },
+                        {
+                            selector: 'node[type = "Movie"]',
+                            style: {
+                                'background-image': 'url("assets/movie.png")',
+                                'background-fit': 'cover',
+                                'background-opacity': 1,
+                                'background-color': 'rgba(255, 182, 193, 0.5)',
+                                'width': 40,
+                                'height': 40,
+                                'label': 'data(label)',
+                                'font-size': '10px',
+                                'text-valign': 'bottom',
+                                'text-margin-y': 5
+                            }
+                        },
+                        {
+                            selector: 'edge',
+                            style: {
+                                'width': 2,
+                                'line-color': '#666'
+                            }
+                        }
+                    ],
+                    layout: randomizedLayout
+                });
+
+                cy.layout(randomizedLayout).run();
+
+            const contextMenu = document.getElementById('context-menu');
+
+            cy.on('cxttap', 'node', function (evt) {
+            selectedNode = evt.target;
+            const contextMenu = document.getElementById('context-menu');
+            const showMovies = document.getElementById('show-movies');
+            const showActors = document.getElementById('show-actors');
+
+            if (selectedNode.data('type') === 'Person') {
+                showMovies.style.display = 'block';
+                showActors.style.display = 'none';
+            } else if (selectedNode.data('type') === 'Movie') {
+                showMovies.style.display = 'none';
+                showActors.style.display = 'block';
+            }
+            contextMenu.style.display = 'block';
+            contextMenu.style.left = `${evt.renderedPosition.x}px`;
+            contextMenu.style.top = `${evt.renderedPosition.y+35}px`;
+        });
+
+        cy.on('tap', function () {
+            const contextMenu = document.getElementById('context-menu');
+            contextMenu.style.display = 'none';
+        });
+
+document.getElementById('show-movies').addEventListener('click', async () => {
+    if (selectedNode.data('type') === 'Person') {
+        const actorName = selectedNode.data('label');
+        const response = await fetch(`http://localhost:3000/api/getActorNeighborhood?name=${actorName}&depth=1`);
+        const graphData = await response.json();
+
+        graphData.nodes.forEach(node => {
+            if (!cy.getElementById(node.data.id).length) {
+                cy.add(node);
+            }
+        });
+        graphData.edges.forEach(edge => {
+            if (!cy.getElementById(edge.data.id).length) {
+                cy.add(edge);
+            }
+        });
+
+        cy.layout(layoutInfo).run();
+    }
+    contextMenu.style.display = 'none';
+});
+
+document.getElementById('show-actors').addEventListener('click', async () => {
+    if (selectedNode.data('type') === 'Movie') {
+        const movieId = selectedNode.data('label');
+        const response = await fetch(`http://localhost:3000/api/getMovieActors?movieId=${movieId}`);
+        const graphData = await response.json();
+
+        graphData.nodes.forEach(node => {
+            if (!cy.getElementById(node.data.id).length) {
+                cy.add(node);
+            }
+        });
+        graphData.edges.forEach(edge => {
+            if (!cy.getElementById(edge.data.id).length) {
+                cy.add(edge);
+            }
+        });
+
+        cy.layout(layoutInfo).run();
+    }
+    contextMenu.style.display = 'none';
+});
+    } catch (error) {
+            console.error("Hata:", error);
+            alert("Cant Load Graph");}
+}
+</script>
+</body>
+</html>
