@@ -1,6 +1,6 @@
 # movie-graph-visualization
 
-This project visualizes a movie dataset using Neo4j as the backend and Cytoscape.js for frontend graph visualization.
+This project visualizes a movie dataset using Neo4j's sample movie database and Cytoscape.js for graph visualization.
 
 ## Installation
 
